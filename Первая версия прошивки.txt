@@ -1,0 +1,145 @@
+/*
+ * Проект "Теплица" УТЭК
+ * Разработчик прошивки Лысов А.Д.
+ * Написано под микроконтроллер STM32F103C(20k RAM, 64k Flash)
+ * Версия кода v0.1
+ */
+
+//Солнечная батарея и вентилятор
+#define SOLAR_BATTERY_PIN PA1
+#define FAN_PIN PB12
+
+//Фоторезистор и LED лента
+#define LIGHT_RES_PIN PA1
+#define LED_PIN PB3
+
+//Термистор, два концевика и мотор
+#define TERMO_RES_PIN PA2
+#define FINISH_UP_PIN PB7
+#define FINISH_DOWN_PIN PB6
+#define DRIVE_WINDOWS_PIN_R PB13
+#define DRIVE_WINDOWS_PIN_L PB11
+
+//Датчик влажности почвы и насос полива
+#define HYDRO_PIN PB9
+#define PUMP_WATERING_PIN PB15
+
+//Уровень в емкости и насос откачки
+#define LEVEL_PIN PB8
+#define PUMP_RETURN_PIN PB14
+
+//Красная подсветка емкости
+#define RED_LIGHT_PIN PB4
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(SOLAR_BATTERY_PIN, INPUT_ANALOG);
+  pinMode(LIGHT_RES_PIN, INPUT_ANALOG);
+  pinMode(TERMO_RES_PIN, INPUT_ANALOG);
+
+  pinMode(FINISH_UP_PIN, INPUT);
+  pinMode(FINISH_DOWN_PIN, INPUT);
+  pinMode(HYDRO_PIN, INPUT);
+  pinMode(LEVEL_PIN, INPUT);       
+
+  pinMode(FAN_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT); 
+  pinMode(DRIVE_WINDOWS_PIN_R, OUTPUT);
+  pinMode(DRIVE_WINDOWS_PIN_L, OUTPUT);
+  pinMode(PUMP_WATERING_PIN, OUTPUT);
+  pinMode(RED_LIGHT_PIN, OUTPUT);      
+}
+
+void toogleDigital(int pin, bool on) {
+  if (on) {
+    digitalWrite(pin, HIGH);
+  } else {
+    digitalWrite(pin, LOW);
+  }
+}
+
+//Вентилятор - Солнечная панель
+bool getFanState() {
+  int slr = analogRead(SOLAR_BATTERY_PIN);
+  return slr > 3000;
+}
+
+void processSolarPanerLogic() {
+  toogleDigital(FAN_PIN, getFanState());
+}
+
+//Фоторезистор - Светодиодная лента
+bool getLightState() {
+  int lght = analogRead(LIGHT_RES_PIN);
+  return lght > 3000;
+}
+
+void processLightLogic() {
+  toogleDigital(LED_PIN, getLightState());
+}
+
+//Терморезистор - Открытие окон
+bool getTermoState() {
+  int term = analogRead(TERMO_RES_PIN);
+  //todo перевод в градусы
+  return term > 3000;
+}
+
+void processTermoLogic() {
+  int up = digitalRead(FINISH_UP_PIN);
+  int down = digitalRead(FINISH_DOWN_PIN);
+  bool termoState = getTermoState();
+
+  if ((termoState && down == HIGH)
+      || (termoState && up == LOW)) {
+        
+    toogleDigital(DRIVE_WINDOWS_PIN_R, true);
+    toogleDigital(DRIVE_WINDOWS_PIN_L, false);
+    
+  } else if ((!termoState && up == HIGH)
+            ||(!termoState && down == LOW)) {
+              
+    toogleDigital(DRIVE_WINDOWS_PIN_L, true);
+    toogleDigital(DRIVE_WINDOWS_PIN_R, false);
+  } else {
+    
+    toogleDigital(DRIVE_WINDOWS_PIN_R, false);
+    toogleDigital(DRIVE_WINDOWS_PIN_L, false);
+  }
+}
+
+//Датчик влажности - Насос полив
+void processHydroLogic() {
+  int needWattering = digitalRead(HYDRO_PIN);
+  toogleDigital(PUMP_WATERING_PIN, needWattering == HIGH);
+}
+
+//Датчик уровня в емкости - Насос откачки
+void processLevelLogic() {
+  int needReturn = digitalRead(LEVEL_PIN);
+  toogleDigital(PUMP_RETURN_PIN, needReturn == LOW);
+}
+
+//Красный светодиод
+long lastMilli = 0;
+bool redLightOn = false;
+void processRedLightLogic() {
+  long milli = millis();
+  if (milli - lastMilli >= 60 * 1000) {
+     lastMilli = milli;
+     redLightOn = !redLightOn;
+     toogleDigital(RED_LIGHT_PIN, redLightOn);
+  }
+}
+
+void loop() {
+  processSolarPanerLogic();
+  processLightLogic();
+  processTermoLogic();
+  processHydroLogic();
+  processLevelLogic();
+  processRedLightLogic();
+  
+  delay(500);
+}
