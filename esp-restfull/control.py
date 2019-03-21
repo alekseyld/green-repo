@@ -1,4 +1,5 @@
 import webpage
+import serialcomm
 
 import socket
 import gc
@@ -69,7 +70,8 @@ def parseSettings(request):
 # --- start RESTfull API section ---
 
 def f(parsedRequest):
-    return 'hello ' + parsedRequest['rest']
+    return serialcomm.write('message from esp')#parsedRequest['params']['param1']
+    #return 'hello ' + parsedRequest['rest']
 
 REST_METHODS = {
     'f' : f
