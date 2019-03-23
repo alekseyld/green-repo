@@ -7,6 +7,8 @@
 
 #define DEBUG true
 
+#define ESP_COM Serial //Serial1
+
 #include <OneWire.h>
 
 //Солнечная батарея и вентилятор
@@ -52,12 +54,6 @@ void setup() {
   pinMode(PUMP_WATERING_PIN, OUTPUT);
   pinMode(PUMP_RETURN_PIN, OUTPUT);
   pinMode(RED_LIGHT_PIN, OUTPUT);
-
-#if DEBUG
-  while (!Serial) {
-    ; // wait for serial port to connect. Needed for native USB
-  }
-#endif
 }
 
 /*
@@ -85,7 +81,7 @@ int getLevelState(){
 //Кэшированное значение температуры. Задается в начале цикла и исползуется на его протяжении.
 float _tempCacheValue;
 float getTempState(){
-  return tempCacheValue;
+  return _tempCacheValue;
 }
 
 //Получение дисретного значения влажности
@@ -119,13 +115,17 @@ String getWinDriveState(){
   return WIN_STATES[_winDriveStateIndex];
 }
 
+int getRedLedState(){
+  return digitalRead(RED_LIGHT_PIN);
+}
+
 /*
  * Специальные геттеры
  */
 
 //Вентилятор - Солнечная панель
-bool getSolarStatus() {
-  int procent = getSolarPanelStateProcents();
+bool isSolarLow() {
+  int procent = getSolarState();
   return procent < 70;
 }
 
@@ -141,7 +141,7 @@ bool getTermoStatus() {
 /*
  * Сеттеры состояний
  */
-
+ 
 void setLedState(int value){
   digitalWrite(LED_PIN, value);
 }
@@ -159,16 +159,40 @@ void setFanState(int value){
 }
 
 // 0 - stop, 1 - left, 2 - right
-int setWinDriveState(int state){
-  //TODO 
+void setWinDriveState(int state){
+  bool stateR = false;
+  bool stateL = false;
+   
+  if (state == 1) {
+    //LEFT
+    stateR = false;
+    stateL = true;
+  } else if (state == 2){
+    //RIGHT
+    stateR = true;
+    stateL = false;
+  } else {
+    //STOP
+    stateR = false;
+    stateL = false;
+  }
+  
+  digitalWrite(DRIVE_WINDOWS_PIN_R, stateR);
+  digitalWrite(DRIVE_WINDOWS_PIN_R, stateL);
+}
+
+void setRedLedState(int value){
+  digitalWrite(RED_LIGHT_PIN, value);
 }
 
 /*
  * Обработка логики
  */
-
+ 
+bool manualMode = false;
+ 
 //Получение значения температуры из ds18b20 в цельсиях
-void updateTempCacheFromOneWire() {
+void updateTempCacheFromOneWire() { 
   byte i;
   byte present = 0;
   byte type_s;
@@ -221,93 +245,266 @@ void updateTempCacheFromOneWire() {
 //Красный светодиод
 long lastMilli = 0;
 bool redLightOn = false;
-void processRedLightLogic() {
+void processRedLightLogic(bool hardValue) {
+  if (manualMode) {
+    setRedLedState(hardValue);
+    return;
+  }
+
   long milli = millis();
   if (milli - lastMilli >= 60 * 1000) {
     lastMilli = milli;
     redLightOn = !redLightOn;
-    toogleDigital(RED_LIGHT_PIN, redLightOn);
+    setRedLedState(redLightOn);
   }
 }
 
 //Датчик уровня в емкости - Насос откачки
-void processLevelLogic() {
-  int needReturn = getLevelState();
+bool processLevelLogic(bool hardValue) {
+  int levelState = getLevelState();
+  
   Serial.print("LEVEL_PIN digital = ");
-  Serial.println(needReturn);
-  Serial.print("---needReturn bool = ");
-  Serial.println(needReturn == HIGH);
+  Serial.println(levelState);
+  Serial.print("---levelState bool = ");
+  Serial.println(levelState == 0);
+  
+  if (manualMode) {
+    if (levelState == 1 && hardValue){
+      return false;
+    }
+    setPumpReturnState(hardValue);
+  }
 
-  toogleDigital(PUMP_RETURN_PIN, needReturn == HIGH);
+  setPumpReturnState(levelState == 0);
+  
+  return true;
 }
 
 void processSolarPanerLogic() {
-  bool solar = getSolarBoolean();
+  bool solar = isSolarLow();
   
-  toogleDigital(FAN_PIN, solar);
-
-  toogleDigital(LED_PIN, !solar);
+  setFanState(!solar);
+  setLedState(solar);
 }
 
 //Термометр - Открытие окон
-void processDriveLogic(int up, int down, bool termoState) {
-  if ((termoState && down == HIGH)
-      || (termoState && up == LOW)) {
+void processDriveLogic(int up, int down, bool termoStatus) {
+  if ((termoStatus && down == HIGH)
+      || (termoStatus && up == LOW)) {
 
     Serial.println("------Drive to RIGHT OPEN");
-    
-    toogleDigital(DRIVE_WINDOWS_PIN_R, true);
-    toogleDigital(DRIVE_WINDOWS_PIN_L, false);
 
     _winDriveStateIndex = 2;
+    
+    setWinDriveState(_winDriveStateIndex);
 
-  } else if ((!termoState && up == HIGH)
-             || (!termoState && down == LOW)) {
+  } else if ((!termoStatus && up == HIGH)
+             || (!termoStatus && down == LOW)) {
 
     Serial.println("------Drive to LEFT CLOSE");
     
-    toogleDigital(DRIVE_WINDOWS_PIN_L, true);
-    toogleDigital(DRIVE_WINDOWS_PIN_R, false);
-
     _winDriveStateIndex = 1;
     
   } else {
-    Serial.println("------Drive STOP");
-    
-    toogleDigital(DRIVE_WINDOWS_PIN_R, false);
-    toogleDigital(DRIVE_WINDOWS_PIN_L, false);
+    Serial.println("------Drive STOP"); 
 
     _winDriveStateIndex = 0;
   }
+  
+  setWinDriveState(_winDriveStateIndex);
 }
 
-void processTermoLogic() {
+void processTermoLogic(bool hardValue) {
   int up = getFinishUpState();
   int down = getFinishDownState();
-  bool termoState = getTermoStatus();
+  bool termoStatus = getTermoStatus();
 
   Serial.print("FINISH_UP_PIN digital = ");
   Serial.println(up);
   Serial.print("FINISH_DOWN_PIN digital = ");
   Serial.println(down);
   Serial.print("---TermoState bool = ");
-  Serial.println(termoState);
+  Serial.println(termoStatus);
 
-  processDriveLogic(up, down, termoState);
+  processDriveLogic(up, down, termoStatus);
 }
 
-void processHydroLogic() {
+void processHydroLogic(bool hardValue) {
+  if (manualMode) {
+    setPumpWateringState(hardValue);
+    return;
+  }
+  
   int needWattering = getHydroState();
-  Serial.print("HYDRO_PIN analog = ");
+  
+  Serial.print("HYDRO_PIN dig = ");
   Serial.println(needWattering);
-  Serial.print("---needWattering bool = ");
-  Serial.println(needWattering == LOW);
 
-  toogleDigital(PUMP_WATERING_PIN, needWattering == LOW);
+  setPumpWateringState(needWattering);
+}
+
+void processAutoMode() {
+    // processSolarPanerLogic(false);
+  // processLightLogic(false);
+  // processHydroLogic(false);
+  // processLevelLogicfalse();
+  // processRedLightLogic(false);
+  // processTermoLogic(false);
+}
+
+/*
+ * Формирование ответов для ESP
+ */
+
+String getValueJson(String title, String value, bool isEnd){
+  String json =  "\"" + title + "\":\"" + value + "\"";
+
+  if (!isEnd) {
+    json += ",";
+  }
+
+  return json;
+}
+
+String getValueJson(String title, int value, bool isEnd){
+  return getValueJson(title, String(value, DEC), isEnd);
+}
+
+String getResponseJson(String title, String value){
+  return "{\"" + title + "\":\"" + value + "\"}";
+}
+
+String getResponseJson(String title, int value){
+  return getResponseJson(title, String(value, DEC));
+}
+
+String getErrorResponse(String error){
+  return "{\"error\":\"" + error + "\"}";
 }
 
 
-bool autoMode = true;
+/*
+ * Обработка запросов от ESP
+ */
+
+String parseParams(String request, String command) {
+  request.replace(command, "");
+  request.trim();
+  return request;
+}
+
+String processSetMode(String param) {
+  if (param.equalsIgnoreCase("manual")) {
+
+    manualMode = true;
+    return getResponseJson("manualMode", "manual");
+    
+  } else {
+
+    manualMode = false;
+    return getResponseJson("manualMode", "auto");
+  }
+}
+
+String processGetState(String param) {
+   if (param.equalsIgnoreCase("led")) {
+      
+      return getResponseJson("led", getLedState());
+      
+   } else if (param.equalsIgnoreCase("pump_watering")) {
+    
+      return getResponseJson("pump_watering", getPumpWateringState());
+      
+   } else if (param.equalsIgnoreCase("pump_return")) {
+    
+      return getResponseJson("pump_return", getPumpReturnState());
+      
+   } else if (param.equalsIgnoreCase("level")) {
+    
+      return getResponseJson("level", getLevelState());
+      
+   } else if (param.equalsIgnoreCase("temp")) {
+    
+      return getResponseJson("temp", getTempState());
+      
+   } else if (param.equalsIgnoreCase("hydro")) {
+    
+      return getResponseJson("hydro", getHydroState());
+      
+   } else if (param.equalsIgnoreCase("fan")) {
+    
+      return getResponseJson("fan", getFanState());
+      
+   } else if (param.equalsIgnoreCase("solar")) {
+    
+      return getResponseJson("solar", getSolarState());
+      
+   } else if (param.equalsIgnoreCase("finish_down")) {
+    
+      return getResponseJson("finish_down", getFinishDownState());
+      
+   } else if (param.equalsIgnoreCase("finish_up")) {
+    
+      return getResponseJson("finish_up", getFinishUpState());
+      
+   } else if (param.equalsIgnoreCase("win_drive")) {
+    
+      return getResponseJson("win_drive", getWinDriveState());
+      
+   } else if (param.equalsIgnoreCase("red_led")) {
+    
+      return getResponseJson("red_led", getRedLedState());
+      
+   }  else if (param.equalsIgnoreCase("all")) {
+
+      String response = "{";
+
+      response += getValueJson("led", getLedState(), false);
+      response += getValueJson("pump_watering", getPumpWateringState(), false);
+      response += getValueJson("level", getLevelState(), false);
+      response += getValueJson("temp", getTempState(), false);
+      response += getValueJson("hydro", getHydroState(), false);
+      response += getValueJson("fan", getFanState(), false);
+      response += getValueJson("solar", getSolarState(), false);
+      response += getValueJson("finish_down", getFinishDownState(), false);
+      response += getValueJson("finish_up", getFinishUpState(), false);
+      response += getValueJson("win_drive", getWinDriveState(), false);
+      response += getValueJson("red_led", getRedLedState(), true);
+
+      return response + "}";
+   } else {
+    
+      return getErrorResponse("Incorrect param for GetState");
+   } 
+}
+
+String processSetState(String param) {
+  return getErrorResponse("not realize");
+}
+
+String routeRequest(String request) {
+  String response;
+
+  if (request.indexOf("SetMode") != -1) {
+    
+    response = processSetMode(parseParams(request, "SetMode"));
+    
+  } else if (request.indexOf("GetState") != -1) {
+    
+    response = processGetState(parseParams(request, "GetState"));
+    
+  }  else if (request.indexOf("SetState") != -1) {
+    
+    response = processSetState(parseParams(request, "SetState"));
+    
+  } else {
+    
+    response = getErrorResponse("Incorrect request");
+  }
+  
+  return response;
+}
+
 char buff[256] = "";
 
 void loop() {
@@ -317,28 +514,21 @@ void loop() {
   updateTempCacheFromOneWire();
 
   Serial.print("avalible on serial1: ");
-  Serial.println(Serial1.available());
+  Serial.println(ESP_COM.available());
 
-  if (Serial1.available()) {
+  if (ESP_COM.available()) {
 
-    Serial1.readBytes(buff, Serial1.available());
+    ESP_COM.readBytes(buff, ESP_COM.available());
 
-    Serial.print("I received: ");
-    Serial.println(buff);
+    String response = routeRequest(String(buff));
 
-    Serial1.println("STATUS");
-    Serial1.println("STATUS");
-    Serial1.println("STATUS");
+    ESP_COM.println(response);
   }
 
-  // processSolarPanerLogic();
-  // processLightLogic();
-  // processHydroLogic();
-  // processLevelLogic();
-  // processRedLightLogic();
-  // processTermoLogic();
+  if (!manualMode) {
+    processAutoMode();
+  }
 
   Serial.println("-----------------------");
   delay(500);
-  //delay(5000);
 }

@@ -1,0 +1,33 @@
+1. Два режима работы теплицы (Автоматический и Ручной)
+В ручном режиме можно самому включить, например, вентилятор, выключить насос (но при этом будут работать все датчики, например датчик уровня в емкости)
+В автоматическом режиме доступна только статистика.
+
+API
+1. Status - возвращает список состояний всех элементов (led, насос полив, насос откачка, уровень воды, текущая температура, влажность почвы, вентилятор, солнечная панель)
+
+2. SetMode [параметр Auto/Manual] - устанавливает режим работы теплицы
+
+3. GetState [параметр название узла или ALL] - 
+    led - 0,1
+    pump_watering - 0,1 getPumpWateringState
+    pump_return - 0,1 getPumpReturnState
+    level - 0,1  getLevelState
+    temp - 00 в градусах цельсиях getTempState
+    hydro - 0,1 getHydroState
+    fan- 0,1 getFanState
+    solar - 0-100 % getSolarState
+    finish_down 0,1 getFinishDownState
+    finish_up 0,1 getFinishUpState
+    win_drive - stop, left, right getWinDriveState
+    red_led 0,1 getRedLedState
+
+
+3. SetState [параметр название узла]
+    led - 0,1
+    pump_watering - 0,1
+    pump_return - 0,1
+    win_drive - -1, 0, 1
+    fan- 0,1
+    red_led 0,1
+    
+    
