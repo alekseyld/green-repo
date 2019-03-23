@@ -176,6 +176,7 @@ int setWinDriveState(String state){
       return 1;
     }
     
+    _winDriveStateIndex = 1;
     stateR = false;
     stateL = true;
   } else if (state.equals("right")){
@@ -183,11 +184,13 @@ int setWinDriveState(String state){
     if (manualMode && getFinishUpState()) {
       return 2;
     }
-    
+
+    _winDriveStateIndex = 2;
     stateR = true;
     stateL = false;
   } else {
     //STOP
+    _winDriveStateIndex = 0;
     stateR = false;
     stateL = false;
   }
@@ -212,7 +215,6 @@ void setManualMode(bool mode) {
   if (mode) {
       setPumpWateringState(0);
       setPumpReturnState(0);
-      setWinDriveState("stop");
   }
 }
  
@@ -270,12 +272,7 @@ void updateTempCacheFromOneWire() {
 //Красный светодиод
 long lastMilli = 0;
 bool redLightOn = false;
-void processRedLightLogic(bool hardValue) {
-  if (manualMode) {
-    setRedLedState(hardValue);
-    return;
-  }
-
+void processRedLightLogic() {
   long milli = millis();
   if (milli - lastMilli >= 60 * 1000) {
     lastMilli = milli;
@@ -285,24 +282,15 @@ void processRedLightLogic(bool hardValue) {
 }
 
 //Датчик уровня в емкости - Насос откачки
-bool processLevelLogic(bool hardValue) {
+void processLevelLogic() {
   int levelState = getLevelState();
   
   Serial.print("LEVEL_PIN digital = ");
   Serial.println(levelState);
   Serial.print("---levelState bool = ");
   Serial.println(levelState == 0);
-  
-  if (manualMode) {
-    if (levelState == 1 && hardValue){
-      return false;
-    }
-    setPumpReturnState(hardValue);
-  }
 
   setPumpReturnState(levelState == 0);
-  
-  return true;
 }
 
 void processSolarPanerLogic() {
@@ -312,8 +300,8 @@ void processSolarPanerLogic() {
   setLedState(solar);
 }
 
-//Термометр - Открытие окон
-void processDriveLogic(bool termoStatus) {//!!!!!! ДОБРАБОТАТЬ
+//STATE{ "stop", "left", "right" };
+void processDriveLogic() {
   int up = getFinishUpState();
   int down = getFinishDownState();
 
@@ -321,45 +309,41 @@ void processDriveLogic(bool termoStatus) {//!!!!!! ДОБРАБОТАТЬ
   Serial.println(up);
   Serial.print("FINISH_DOWN_PIN digital = ");
   Serial.println(down);
-  
-  if ((termoStatus && down == HIGH)
-      || (termoStatus && up == LOW)) {
 
-    Serial.println("------Drive to RIGHT OPEN");
-
-    _winDriveStateIndex = 2;
-
-  } else if ((!termoStatus && up == HIGH)
-             || (!termoStatus && down == LOW)) {
-
-    Serial.println("------Drive to LEFT CLOSE");
+  if (_winDriveStateIndex == 2 && up) {
     
-    _winDriveStateIndex = 1;
+    _winDriveStateIndex = 0;
     
-  } else {
-    Serial.println("------Drive STOP"); 
+  } else if (_winDriveStateIndex == 1 && down) {
 
     _winDriveStateIndex = 0;
+    
   }
-  
+   
   setWinDriveState(WIN_STATES[_winDriveStateIndex]);
 }
 
-void processTermoLogic(bool hardValue) {
+void processTermoLogic() {
   bool termoStatus = getTermoStatus();
+  int up = getFinishUpState();
+  int down = getFinishDownState();
 
   Serial.print("---TermoState bool = ");
   Serial.println(termoStatus);
 
-  processDriveLogic(termoStatus);
+  if (termoStatus && down) {
+    Serial.println("------Drive to RIGHT OPEN");
+    _winDriveStateIndex = 2;
+  } else if (!termoStatus && up) {
+    Serial.println("------Drive to LEFT CLOSE");
+    _winDriveStateIndex = 1;
+  } else {
+    Serial.println("------Drive STOP"); 
+    _winDriveStateIndex = 0;
+  }
 }
 
-void processHydroLogic(bool hardValue) {
-  if (manualMode) {
-    setPumpWateringState(hardValue);
-    return;
-  }
-  
+void processHydroLogic() {
   int needWattering = getHydroState();
   
   Serial.print("HYDRO_PIN dig = ");
@@ -369,12 +353,11 @@ void processHydroLogic(bool hardValue) {
 }
 
 void processAutoMode() {
-    // processSolarPanerLogic(false);
-  // processLightLogic(false);
-  // processHydroLogic(false);
-  // processLevelLogicfalse();
-  // processRedLightLogic(false);
-  // processTermoLogic(false);
+  processRedLightLogic();
+  processLevelLogic();
+  processSolarPanerLogic();
+  processTermoLogic();
+  processHydroLogic();
 }
 
 /*
@@ -548,7 +531,6 @@ String processSetState(String param) {
       int resp = setWinDriveState(value);
 
       if (resp == 1) {
-        //finish_down
         return getErrorResponse("win_drive cannot set LEFT, because finish_down is HIGH");
       } else if (resp == 2) {
         return getErrorResponse("win_drive cannot set HIGH, because finish_up is HIGH");
@@ -615,6 +597,8 @@ void loop() {
   if (!manualMode) {
     processAutoMode();
   }
+
+  processDriveLogic();
 
   Serial.println("-----------------------");
   delay(500);
