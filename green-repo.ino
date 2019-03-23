@@ -63,15 +63,15 @@ void setup() {
  */
 
 int getLedState(){
-  return digitalRead(LED_PIN);
+  return !((bool)digitalRead(LED_PIN));
 }
 
 int getPumpWateringState(){
-  return digitalRead(PUMP_WATERING_PIN);
+  return !((bool)digitalRead(PUMP_WATERING_PIN));
 }
 
 int getPumpReturnState(){
-  return digitalRead(PUMP_RETURN_PIN);
+  return !((bool)digitalRead(PUMP_RETURN_PIN));
 }
 
 //Получение дисретного значения уровня
@@ -93,7 +93,7 @@ int getHydroState(){
 }
 
 int getFanState(){
-  return digitalRead(FAN_PIN);
+  return !((bool)digitalRead(FAN_PIN));
 }
 
 //Получение состояния солнечной панели в процентах %
@@ -111,7 +111,7 @@ int getFinishUpState(){
   return digitalRead(FINISH_UP_PIN);
 }
 
-String WIN_STATES[3] = { "stop", "left", "right" };
+String WIN_STATES[3] = { "stop", "close", "open" };
 int _winDriveStateIndex = 0;
 String getWinDriveState(){
   return WIN_STATES[_winDriveStateIndex];
@@ -145,11 +145,11 @@ bool getTermoStatus() {
  */
  
 void setLedState(int value){
-  digitalWrite(LED_PIN, value);
+  digitalWrite(LED_PIN, !((bool)value));
 }
 
 void setPumpWateringState(int value){
-  digitalWrite(PUMP_WATERING_PIN, value);
+  digitalWrite(PUMP_WATERING_PIN, !((bool)value));
 }
 
 bool setPumpReturnState(int value){
@@ -157,12 +157,12 @@ bool setPumpReturnState(int value){
     return false;
   }
   
-  digitalWrite(PUMP_RETURN_PIN, value);
+  digitalWrite(PUMP_RETURN_PIN, !((bool)value));
   return true;
 }
 
 void setFanState(int value){
-  digitalWrite(FAN_PIN, value);
+  digitalWrite(FAN_PIN, !((bool)value));
 }
 
 //1 - ошибка left
@@ -170,7 +170,7 @@ int setWinDriveState(String state){
   bool stateR = false;
   bool stateL = false;
    
-  if (state.equals("left")) {
+  if (state.equals("close")) {
     //LEFT
     if (manualMode && getFinishDownState()) {
       return 1;
@@ -179,7 +179,7 @@ int setWinDriveState(String state){
     _winDriveStateIndex = 1;
     stateR = false;
     stateL = true;
-  } else if (state.equals("right")){
+  } else if (state.equals("open")){
     //RIGHT
     if (manualMode && getFinishUpState()) {
       return 2;
@@ -300,7 +300,7 @@ void processSolarPanerLogic() {
   setLedState(solar);
 }
 
-//STATE{ "stop", "left", "right" };
+//STATE{ "stop", "left", "open" };
 void processDriveLogic() {
   int up = getFinishUpState();
   int down = getFinishDownState();
@@ -407,7 +407,7 @@ String parseParams(String request, String command) {
   return request;
 }
 
-String processSetMode(String param) {
+String processSetMode(String param) { 
   if (param.equalsIgnoreCase("manual")) {
 
     setManualMode(true);
@@ -475,6 +475,7 @@ String processGetState(String param) {
 
       response += getValueJson("led", getLedState(), false);
       response += getValueJson("pump_watering", getPumpWateringState(), false);
+      response += getValueJson("pump_return", getPumpReturnState(), false);
       response += getValueJson("level", getLevelState(), false);
       response += getValueJson("temp", getTempState(), false);
       response += getValueJson("hydro", getHydroState(), false);
@@ -493,21 +494,21 @@ String processGetState(String param) {
 }
 
 String processSetState(String param) {
-     if (param.equalsIgnoreCase("led")) {
+     if (param.indexOf("led") != -1) {
 
       String value =  parseValue(param, "led");
       setLedState(value.toInt());
       
       return getResponseJson("led", value);
       
-   } else if (param.equalsIgnoreCase("pump_watering")) {
+   } else if (param.indexOf("pump_watering") != -1) {
     
       String value =  parseValue(param, "pump_watering");
       setPumpWateringState(value.toInt());
       
       return getResponseJson("pump_watering", value);
       
-   } else if (param.equalsIgnoreCase("pump_return")) {
+   } else if (param.indexOf("pump_return") != -1) {
 
       String value =  parseValue(param, "pump_return");
       bool resp = setPumpReturnState(value.toInt());
@@ -518,14 +519,14 @@ String processSetState(String param) {
       
       return getResponseJson("pump_return", value);
       
-   } else if (param.equalsIgnoreCase("fan")) {
+   } else if (param.indexOf("fan") != -1) {
 
       String value =  parseValue(param, "fan");
       setFanState(value.toInt());
       
       return getResponseJson("fan", value);
       
-   } else if (param.equalsIgnoreCase("win_drive")) {
+   } else if (param.indexOf("win_drive") != -1) {
 
       String value =  parseValue(param, "win_drive");
       int resp = setWinDriveState(value);
@@ -538,7 +539,7 @@ String processSetState(String param) {
       
       return getResponseJson("win_drive", value);
       
-   } else if (param.equalsIgnoreCase("red_led")) {
+   } else if (param.indexOf("red_led") != -1) {
 
       String value =  parseValue(param, "red_led");
       setRedLedState(value.toInt());
@@ -554,17 +555,19 @@ String processSetState(String param) {
 String routeRequest(String request) {
   String response;
 
+  request.toLowerCase();
+  
   if (request.indexOf("setmode") != -1) {
     
-    response = processSetMode(parseParams(request, "SetMode"));
+    response = processSetMode(parseParams(request, "setmode"));
     
   } else if (request.indexOf("getstate") != -1) {
     
-    response = processGetState(parseParams(request, "GetState"));
+    response = processGetState(parseParams(request, "getstate"));
     
   }  else if (request.indexOf("setstate") != -1) {
     
-    response = processSetState(parseParams(request, "SetState"));
+    response = processSetState(parseParams(request, "setstate"));
     
   } else {
     
