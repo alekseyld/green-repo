@@ -36,6 +36,8 @@ OneWire ds(PA3);
 //Красная подсветка емкости
 #define RED_LIGHT_PIN PB4
 
+bool manualMode = false;
+
 void setup() {
   Serial.begin(115200);
   Serial1.begin(115200);
@@ -150,25 +152,38 @@ void setPumpWateringState(int value){
   digitalWrite(PUMP_WATERING_PIN, value);
 }
 
-void setPumpReturnState(int value){
+bool setPumpReturnState(int value){
+  if (value && getLevelState()) {
+    return false;
+  }
+  
   digitalWrite(PUMP_RETURN_PIN, value);
+  return true;
 }
 
 void setFanState(int value){
   digitalWrite(FAN_PIN, value);
 }
 
-// 0 - stop, 1 - left, 2 - right
-void setWinDriveState(int state){
+//1 - ошибка left
+int setWinDriveState(String state){
   bool stateR = false;
   bool stateL = false;
    
-  if (state == 1) {
+  if (state.equals("left")) {
     //LEFT
+    if (manualMode && getFinishDownState()) {
+      return 1;
+    }
+    
     stateR = false;
     stateL = true;
-  } else if (state == 2){
+  } else if (state.equals("right")){
     //RIGHT
+    if (manualMode && getFinishUpState()) {
+      return 2;
+    }
+    
     stateR = true;
     stateL = false;
   } else {
@@ -179,6 +194,8 @@ void setWinDriveState(int state){
   
   digitalWrite(DRIVE_WINDOWS_PIN_R, stateR);
   digitalWrite(DRIVE_WINDOWS_PIN_R, stateL);
+
+  return 0;
 }
 
 void setRedLedState(int value){
@@ -188,8 +205,16 @@ void setRedLedState(int value){
 /*
  * Обработка логики
  */
- 
-bool manualMode = false;
+
+void setManualMode(bool mode) {
+  manualMode = mode;
+
+  if (mode) {
+      setPumpWateringState(0);
+      setPumpReturnState(0);
+      setWinDriveState("stop");
+  }
+}
  
 //Получение значения температуры из ds18b20 в цельсиях
 void updateTempCacheFromOneWire() { 
@@ -288,15 +313,21 @@ void processSolarPanerLogic() {
 }
 
 //Термометр - Открытие окон
-void processDriveLogic(int up, int down, bool termoStatus) {
+void processDriveLogic(bool termoStatus) {//!!!!!! ДОБРАБОТАТЬ
+  int up = getFinishUpState();
+  int down = getFinishDownState();
+
+  Serial.print("FINISH_UP_PIN digital = ");
+  Serial.println(up);
+  Serial.print("FINISH_DOWN_PIN digital = ");
+  Serial.println(down);
+  
   if ((termoStatus && down == HIGH)
       || (termoStatus && up == LOW)) {
 
     Serial.println("------Drive to RIGHT OPEN");
 
     _winDriveStateIndex = 2;
-    
-    setWinDriveState(_winDriveStateIndex);
 
   } else if ((!termoStatus && up == HIGH)
              || (!termoStatus && down == LOW)) {
@@ -311,22 +342,16 @@ void processDriveLogic(int up, int down, bool termoStatus) {
     _winDriveStateIndex = 0;
   }
   
-  setWinDriveState(_winDriveStateIndex);
+  setWinDriveState(WIN_STATES[_winDriveStateIndex]);
 }
 
 void processTermoLogic(bool hardValue) {
-  int up = getFinishUpState();
-  int down = getFinishDownState();
   bool termoStatus = getTermoStatus();
 
-  Serial.print("FINISH_UP_PIN digital = ");
-  Serial.println(up);
-  Serial.print("FINISH_DOWN_PIN digital = ");
-  Serial.println(down);
   Serial.print("---TermoState bool = ");
   Serial.println(termoStatus);
 
-  processDriveLogic(up, down, termoStatus);
+  processDriveLogic(termoStatus);
 }
 
 void processHydroLogic(bool hardValue) {
@@ -387,6 +412,12 @@ String getErrorResponse(String error){
  * Обработка запросов от ESP
  */
 
+String parseValue(String param, String node) {
+  param.replace(node, "");
+  param.trim();
+  return param;
+}
+
 String parseParams(String request, String command) {
   request.replace(command, "");
   request.trim();
@@ -396,12 +427,12 @@ String parseParams(String request, String command) {
 String processSetMode(String param) {
   if (param.equalsIgnoreCase("manual")) {
 
-    manualMode = true;
+    setManualMode(true);
     return getResponseJson("manualMode", "manual");
     
   } else {
 
-    manualMode = false;
+    setManualMode(false);
     return getResponseJson("manualMode", "auto");
   }
 }
@@ -479,21 +510,77 @@ String processGetState(String param) {
 }
 
 String processSetState(String param) {
-  return getErrorResponse("not realize");
+     if (param.equalsIgnoreCase("led")) {
+
+      String value =  parseValue(param, "led");
+      setLedState(value.toInt());
+      
+      return getResponseJson("led", value);
+      
+   } else if (param.equalsIgnoreCase("pump_watering")) {
+    
+      String value =  parseValue(param, "pump_watering");
+      setPumpWateringState(value.toInt());
+      
+      return getResponseJson("pump_watering", value);
+      
+   } else if (param.equalsIgnoreCase("pump_return")) {
+
+      String value =  parseValue(param, "pump_return");
+      bool resp = setPumpReturnState(value.toInt());
+
+      if (!resp) {
+        return getErrorResponse("pump_return cannot set HIGH, because level is HIGH");
+      }
+      
+      return getResponseJson("pump_return", value);
+      
+   } else if (param.equalsIgnoreCase("fan")) {
+
+      String value =  parseValue(param, "fan");
+      setFanState(value.toInt());
+      
+      return getResponseJson("fan", value);
+      
+   } else if (param.equalsIgnoreCase("win_drive")) {
+
+      String value =  parseValue(param, "win_drive");
+      int resp = setWinDriveState(value);
+
+      if (resp == 1) {
+        //finish_down
+        return getErrorResponse("win_drive cannot set LEFT, because finish_down is HIGH");
+      } else if (resp == 2) {
+        return getErrorResponse("win_drive cannot set HIGH, because finish_up is HIGH");
+      }
+      
+      return getResponseJson("win_drive", value);
+      
+   } else if (param.equalsIgnoreCase("red_led")) {
+
+      String value =  parseValue(param, "red_led");
+      setRedLedState(value.toInt());
+      
+      return getResponseJson("red_led", value);
+      
+   } else {
+    
+      return getErrorResponse("Incorrect param for SetState");
+   } 
 }
 
 String routeRequest(String request) {
   String response;
 
-  if (request.indexOf("SetMode") != -1) {
+  if (request.indexOf("setmode") != -1) {
     
     response = processSetMode(parseParams(request, "SetMode"));
     
-  } else if (request.indexOf("GetState") != -1) {
+  } else if (request.indexOf("getstate") != -1) {
     
     response = processGetState(parseParams(request, "GetState"));
     
-  }  else if (request.indexOf("SetState") != -1) {
+  }  else if (request.indexOf("setstate") != -1) {
     
     response = processSetState(parseParams(request, "SetState"));
     
