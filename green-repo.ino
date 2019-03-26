@@ -7,7 +7,7 @@
 
 #define DEBUG true
 
-#define ESP_COM Serial //Serial1
+#define ESP_COM Serial1
 
 #include <OneWire.h>
 

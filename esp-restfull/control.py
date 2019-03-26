@@ -72,15 +72,13 @@ def parseSettings(request):
 # --- start RESTfull API section ---
 
 def setMode(parsedRequest):
-    printD('/setMode to ' + parsedRequest['params']['mode'])
-    
-    return parsedRequest['restMethod'] + parsedRequest['params']['mode']
+    return serialcomm.write('setmode' + parsedRequest['params']['mode'])
 
 def getState(parsedRequest):
-    return 'not realized'
+    return serialcomm.write('getstate' + parsedRequest['params']['node'])
 
 def setState(parsedRequest):
-    return 'not realized'
+    return serialcomm.write('setstate' + parsedRequest['params']['node'])
 
 def f(parsedRequest):
     return serialcomm.write('message from esp')#parsedRequest['params']['param1']
@@ -100,15 +98,16 @@ def getAdminResponse(request):
         
     return webpage.adminPage(getSettings())
    
-def sendResponse(conn, response):
+def sendResponse(conn, response, end = False):
     try:
         conn.sendall(response)
     except:
         printD('Error on send response')
         pass
-         
-    conn.close()
-    gc.collect()   
+    
+    if end:
+        conn.close()
+        gc.collect()   
 
 def stripRequect(request):
     indexHTTP = request.find('HTTP')
@@ -148,25 +147,37 @@ def parseRequest(stripedRequest):
     return parsedRequest
     
 def web_handler(conn, stripedRequest):
-    response = b''
+    respBody = b''
+    code = b'';
 
     printD(stripedRequest)
 
     if stripedRequest.find('admin', 0, 20) != -1:
-        response = getAdminResponse(stripedRequest)
+        code = b'200 OK'
+        respBody = getAdminResponse(stripedRequest)
+        
+        sendResponse(conn, respBody, True)
+        return;
     else:
         try:
             parsedRequest = parseRequest(stripedRequest)
 
             printD(parsedRequest)
             
-            response = REST_METHODS[parsedRequest['restMethod']](parsedRequest).encode('utf-8')
+            respBody = REST_METHODS[parsedRequest['restMethod']](parsedRequest).encode('utf-8')
+            
+            code = b'200 OK'
             
         except KeyError:
-            printD('eerror')
-            response = 'HTTP/1.1 404 Not Found method not supported'.encode('utf-8')
+            code = b'404 Not Found'
+            respBody = b'method not supported'
         
-    sendResponse(conn, response)
+    headers = b'Connection: keep-alive\n' + b'Content-Type: application/json;charset=UTF-8\n' + b'Content-Length: ' + str(len(respBody)).encode('utf-8')
+    
+    sendResponse(conn, b'HTTP/1.1 ' + code + b'\n')
+    sendResponse(conn, headers)
+    sendResponse(conn, b'\n')
+    sendResponse(conn, b'\n' + respBody, True)
         
 def web_loop(s):
     while True:
