@@ -1,3 +1,5 @@
+#sudo kill $(sudo lsof -t -i:80)
+
 import webpage
 import serialcomm
 
@@ -13,7 +15,7 @@ def importRe():
 
 def printD(mes):
     if PC_DEBUG:
-        print('DEBUG LOG - ' + mes)
+        print('DEBUG LOG - ' + str(mes))
 
 def parsePinNum(url):
     m = re.search('/?(\d)=', url)
@@ -69,12 +71,25 @@ def parseSettings(request):
 
 # --- start RESTfull API section ---
 
+def setMode(parsedRequest):
+    printD('/setMode to ' + parsedRequest['params']['mode'])
+    
+    return parsedRequest['restMethod'] + parsedRequest['params']['mode']
+
+def getState(parsedRequest):
+    return 'not realized'
+
+def setState(parsedRequest):
+    return 'not realized'
+
 def f(parsedRequest):
     return serialcomm.write('message from esp')#parsedRequest['params']['param1']
     #return 'hello ' + parsedRequest['rest']
 
 REST_METHODS = {
-    'f' : f
+    'setmode' : setMode,
+    'getstate' : getState,
+    'setstate' : setState
 }
 
 # --- end RESTfull API section ---
@@ -126,24 +141,30 @@ def parseRequest(stripedRequest):
             params[paramsPair[0]] = paramsPair[1]
         
         parsedRequest['params'] = params
+        
     else:
-        parsedRequest['rest'] = stripedRequest[1:len(stripedRequest)]
+        parsedRequest['restMethod'] = stripedRequest[1:len(stripedRequest)]
         
     return parsedRequest
     
 def web_handler(conn, stripedRequest):
     response = b''
 
+    printD(stripedRequest)
+
     if stripedRequest.find('admin', 0, 20) != -1:
         response = getAdminResponse(stripedRequest)
     else:
         try:
             parsedRequest = parseRequest(stripedRequest)
+
+            printD(parsedRequest)
             
-            response = REST_METHODS[parsedRequest['rest']](parsedRequest).encode('utf-8')
+            response = REST_METHODS[parsedRequest['restMethod']](parsedRequest).encode('utf-8')
             
         except KeyError:
-            response = b'HTTP/1.1 404 Not Found method not supported'
+            printD('eerror')
+            response = 'HTTP/1.1 404 Not Found method not supported'.encode('utf-8')
         
     sendResponse(conn, response)
         

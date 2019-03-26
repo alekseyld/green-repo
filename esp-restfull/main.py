@@ -1,4 +1,4 @@
-PC_DEBUG = False
+PC_DEBUG = True
 
 import control
 control.PC_DEBUG = PC_DEBUG
