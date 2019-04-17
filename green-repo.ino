@@ -469,10 +469,15 @@ String processGetState(String param) {
     
       return getResponseJson("red_led", getRedLedState());
       
-   }  else if (param.equalsIgnoreCase("all")) {
+   } else if (param.equalsIgnoreCase("mode")) {
+
+      return getResponseJson("mode", manualMode ? "manual" : "auto");
+     
+   } else if (param.equalsIgnoreCase("all")) {
 
       String response = "{";
 
+      response += getValueJson("mode", manualMode ? "manual" : "auto", false);
       response += getValueJson("led", getLedState(), false);
       response += getValueJson("pump_watering", getPumpWateringState(), false);
       response += getValueJson("pump_return", getPumpReturnState(), false);
