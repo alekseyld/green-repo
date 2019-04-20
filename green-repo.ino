@@ -2,14 +2,17 @@
   Проект "Теплица" УТЭК
   Разработчик прошивки Лысов А.Д.
   Написано под микроконтроллер STM32F103C(20k RAM, 64k Flash)
-  Версия кода v0.2
+  Версия кода v0.3 (616)
+  Название версии "Servo-logic"
 */
 
 #define DEBUG true
+#define SERIAL_LOG true
 
 #define ESP_COM Serial1
 
 #include <OneWire.h>
+#include <Servo.h>
 
 //Солнечная батарея и вентилятор
 #define SOLAR_BATTERY_PIN PA1
@@ -18,12 +21,13 @@
 //LED лента
 #define LED_PIN PB3
 
+//0,180
 //1wire pin, два концевика и мотор створок
 OneWire ds(PA3);
+Servo servo; 
 #define FINISH_UP_PIN PB7
 #define FINISH_DOWN_PIN PB6
-#define DRIVE_WINDOWS_PIN_R PB13
-#define DRIVE_WINDOWS_PIN_L PB11
+#define DRIVE_WINDOWS_CONTROL PA8
 
 //Датчик влажности почвы и насос полива
 #define HYDRO_PIN PB9
@@ -51,11 +55,11 @@ void setup() {
 
   pinMode(FAN_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
-  pinMode(DRIVE_WINDOWS_PIN_R, OUTPUT);
-  pinMode(DRIVE_WINDOWS_PIN_L, OUTPUT);
   pinMode(PUMP_WATERING_PIN, OUTPUT);
   pinMode(PUMP_RETURN_PIN, OUTPUT);
   pinMode(RED_LIGHT_PIN, OUTPUT);
+
+  servo.attach(DRIVE_WINDOWS_CONTROL);
 }
 
 /*
@@ -103,18 +107,30 @@ int getSolarState(){
 
 //Получение значения нижнего конечного выключателя
 int getFinishDownState(){
-  return digitalRead(FINISH_DOWN_PIN);
+  return !digitalRead(FINISH_DOWN_PIN);
 }
 
 //Получение значения верхнего конечного выключателя
 int getFinishUpState(){
-  return digitalRead(FINISH_UP_PIN);
+  return !digitalRead(FINISH_UP_PIN);
 }
 
-String WIN_STATES[3] = { "stop", "close", "open" };
-int _winDriveStateIndex = 0;
+String WIN_STATES[2] = { "close", "open" };
 String getWinDriveState(){
-  return WIN_STATES[_winDriveStateIndex];
+  int angle = getWinDriveAngle();
+  
+  switch(angle) {
+    case 0:
+      return WIN_STATES[0];
+    case 180:
+      return WIN_STATES[1];
+    default:
+      return String(angle);
+  }
+}
+
+int getWinDriveAngle() {
+  return servo.read();
 }
 
 int getRedLedState(){
@@ -133,10 +149,14 @@ bool isSolarLow() {
 
 bool getTermoStatus() {
   float term = getTempState();
+
+  #if (SERIAL_LOG)
   Serial.print("TEMP cel = ");
   Serial.println(term);
   Serial.print("TEMP STATE = ");
   Serial.println(term > 33.0);
+  #endif
+  
   return term > 33.0;
 }
 
@@ -167,36 +187,25 @@ void setFanState(int value){
 
 //1 - ошибка left
 int setWinDriveState(String state){
-  bool stateR = false;
-  bool stateL = false;
+  int angle = 0;
    
   if (state.equals("close")) {
     //LEFT
     if (manualMode && getFinishDownState()) {
       return 1;
     }
-    
-    _winDriveStateIndex = 1;
-    stateR = false;
-    stateL = true;
+
+    angle = 0;
   } else if (state.equals("open")){
     //RIGHT
     if (manualMode && getFinishUpState()) {
       return 2;
     }
 
-    _winDriveStateIndex = 2;
-    stateR = true;
-    stateL = false;
-  } else {
-    //STOP
-    _winDriveStateIndex = 0;
-    stateR = false;
-    stateL = false;
+    angle = 180;
   }
-  
-  digitalWrite(DRIVE_WINDOWS_PIN_R, stateR);
-  digitalWrite(DRIVE_WINDOWS_PIN_R, stateL);
+
+  servo.write(angle);
 
   return 0;
 }
@@ -284,11 +293,13 @@ void processRedLightLogic() {
 //Датчик уровня в емкости - Насос откачки
 void processLevelLogic() {
   int levelState = getLevelState();
-  
+
+  #if (SERIAL_LOG)
   Serial.print("LEVEL_PIN digital = ");
   Serial.println(levelState);
   Serial.print("---levelState bool = ");
   Serial.println(levelState == 0);
+  #endif
 
   setPumpReturnState(levelState == 0);
 }
@@ -300,54 +311,42 @@ void processSolarPanerLogic() {
   setLedState(solar);
 }
 
-//STATE{ "stop", "left", "open" };
-void processDriveLogic() {
-  int up = getFinishUpState();
-  int down = getFinishDownState();
-
-  Serial.print("FINISH_UP_PIN digital = ");
-  Serial.println(up);
-  Serial.print("FINISH_DOWN_PIN digital = ");
-  Serial.println(down);
-
-  if (_winDriveStateIndex == 2 && up) {
-    
-    _winDriveStateIndex = 0;
-    
-  } else if (_winDriveStateIndex == 1 && down) {
-
-    _winDriveStateIndex = 0;
-    
-  }
-   
-  setWinDriveState(WIN_STATES[_winDriveStateIndex]);
-}
-
-void processTermoLogic() {
+void processTermoDriveLogic() {
   bool termoStatus = getTermoStatus();
   int up = getFinishUpState();
   int down = getFinishDownState();
 
+  #if (SERIAL_LOG)
   Serial.print("---TermoState bool = ");
   Serial.println(termoStatus);
+  #endif
+
+  int index = 0;
 
   if (termoStatus && down) {
+    #if (SERIAL_LOG)
     Serial.println("------Drive to RIGHT OPEN");
-    _winDriveStateIndex = 2;
+    #endif
+    
+    index = 1;
   } else if (!termoStatus && up) {
+    #if (SERIAL_LOG)
     Serial.println("------Drive to LEFT CLOSE");
-    _winDriveStateIndex = 1;
-  } else {
-    Serial.println("------Drive STOP"); 
-    _winDriveStateIndex = 0;
+    #endif
+    
+    index = 0;
   }
+  
+  setWinDriveState(WIN_STATES[index]);
 }
 
 void processHydroLogic() {
   int needWattering = getHydroState();
-  
+
+  #if (SERIAL_LOG)
   Serial.print("HYDRO_PIN dig = ");
   Serial.println(needWattering);
+  #endif
 
   setPumpWateringState(needWattering);
 }
@@ -356,8 +355,8 @@ void processAutoMode() {
   processRedLightLogic();
   processLevelLogic();
   processSolarPanerLogic();
-  processTermoLogic();
   processHydroLogic();
+  processTermoDriveLogic();
 }
 
 /*
@@ -585,13 +584,17 @@ String routeRequest(String request) {
 char buff[256] = "";
 
 void loop() {
+  #if (SERIAL_LOG)
   Serial.println(millis());
   Serial.println();
+  #endif
 
   updateTempCacheFromOneWire();
 
+  #if (SERIAL_LOG)
   Serial.print("avalible on serial1: ");
   Serial.println(ESP_COM.available());
+  #endif
 
   if (ESP_COM.available()) {
 
@@ -606,8 +609,9 @@ void loop() {
     processAutoMode();
   }
 
-  processDriveLogic();
-
+  #if (SERIAL_LOG)
   Serial.println("-----------------------");
+  #endif
+  
   delay(500);
 }
