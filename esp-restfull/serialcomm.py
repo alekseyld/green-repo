@@ -5,7 +5,7 @@
 #uart.init(115200, bits=8, parity=None, stop=1);
 
 def write(mes):
-    print(mes)
+    print(mes + ";")
     return input()
     #i = 0
     #while True:

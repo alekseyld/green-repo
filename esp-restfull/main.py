@@ -5,6 +5,9 @@ control.PC_DEBUG = PC_DEBUG
 
 import os
 
+import esp
+esp.osdebug(None)
+
 import gc
 gc.collect()
 
@@ -17,13 +20,13 @@ def setupSTA(settings):
     ap_if.active(False)
     sta_if = network.WLAN(network.STA_IF)
     if not sta_if.isconnected():
-        print('connecting to network...')
+        #print('connecting to network...')
         sta_if.active(True)
         sta_if.connect(settings['wifi-name'], settings['wifi-pass'])
         import time
         i = time.time()
         while not sta_if.isconnected():
-            print('.', end='')
+            #print('.', end='')
             if time.time() - i > 40:
                 setupAp(settings)
                 break

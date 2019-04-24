@@ -130,7 +130,7 @@ String getWinDriveState(){
   switch(angle) {
     case 0:
       return WIN_STATES[0];
-    case 180:
+    case 110:
       return WIN_STATES[1];
     default:
       return String(angle);
@@ -569,11 +569,11 @@ String processSetState(String param) {
       String value =  parseValue(param, "win_drive");
       int resp = setWinDriveState(value);
 
-      if (resp == 1) {
-        return getErrorResponse("win_drive cannot set LEFT, because finish_down is HIGH");
-      } else if (resp == 2) {
-        return getErrorResponse("win_drive cannot set HIGH, because finish_up is HIGH");
-      }
+//      if (resp == 1) {
+//        return getErrorResponse("win_drive cannot set LEFT, because finish_down is HIGH");
+//      } else if (resp == 2) {
+//        return getErrorResponse("win_drive cannot set HIGH, because finish_up is HIGH");
+//      }
       
       return getResponseJson("win_drive", value);
       
@@ -608,7 +608,6 @@ String routeRequest(String request) {
     response = processSetState(parseParams(request, "setstate"));
     
   } else {
-    
     response = getErrorResponse("Incorrect request");
   }
   
@@ -618,44 +617,68 @@ String routeRequest(String request) {
 char buff[256] = "";
 
 void loop() {
-  #if (SERIAL_LOG)
-  Serial.println(millis());
-  Serial.println();
-  #endif
+  //#if (SERIAL_LOG)
+  //Serial.println(millis());
+  //Serial.println();
+  //#endif
 
-  #if (SERIAL_LOG)
-  Serial.print("avalible on serial1: ");
-  Serial.println(ESP_COM.available());
-  #endif
+  //#if (SERIAL_LOG)
+  //Serial.print("avalible on serial1: ");
+  //Serial.println(ESP_COM.available());
+  //#endif
 
   String request = "";
 
-  if (ESP_COM.available()) {
+  bool valid = false;
 
-    ESP_COM.readBytes(buff, ESP_COM.available());
+  while (ESP_COM.available()) {
 
-    request = String(buff);
+    char c = ESP_COM.read();
 
-    #if (SERIAL_LOG)
-    Serial.println(request);
-    #endif
+    if (c == ';') {
+      valid = true;
+      break;
+    }
+
+    //ESP_COM.readBytes(buff, ESP_COM.available();
+
+    request += c;//String(buff);
+
+    //delay(5);
+    //#if (SERIAL_LOG)
+    //Serial.println(request);
+    //#endif
   }
 
   //updateTempCacheFromOneWire();
 
-  if (request.length() > 0) {
+  if (valid && request.length() > 0) {//&& request.length() <= 40
+    #if (SERIAL_LOG)
+    Serial.print("-- final request = ");
+    Serial.println(request);
+    Serial.println("-- final request __ ");
+    #endif
+    
     String response = routeRequest(request);
 
     ESP_COM.println(response);
+
+    ESP_COM.flush();
+
+    #if (SERIAL_LOG)
+    Serial.print("-- final response = ");
+    Serial.println(response);
+    Serial.println("-- final response __ ");
+    #endif
   }
 
 //  if (!manualMode) {
 //    processAutoMode();
 //  }
 
-  #if (SERIAL_LOG)
-  Serial.println("-----------------------");
-  #endif
+  //#if (SERIAL_LOG)
+  //Serial.println("-----------------------");
+  //#endif
   
-  //delay(100);
+  delay(100);
 }

@@ -1,0 +1,1 @@
+ampy --port COM7 put serialcomm.py
