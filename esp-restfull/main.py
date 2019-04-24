@@ -5,8 +5,11 @@ control.PC_DEBUG = PC_DEBUG
 
 import os
 
+import gc
+gc.collect()
+
 if not PC_DEBUG:
-    from machine import Pin
+    #from machine import Pin
     import network
 
 def setupSTA(settings):

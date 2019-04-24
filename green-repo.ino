@@ -1,15 +1,16 @@
 /*
   Проект "Теплица" УТЭК
-  Разработчик прошивки Лысов А.Д.
+  Разработчик прошивки Лысов А.Д
   Написано под микроконтроллер STM32F103C(20k RAM, 64k Flash)
   Версия кода v0.3 (616)
   Название версии "Servo-logic"
 */
-
+// 0 - открыто
+// 110
 #define DEBUG true
 #define SERIAL_LOG true
 
-#define ESP_COM Serial
+#define ESP_COM Serial1
 
 #include <OneWire.h>
 #include <Servo.h>
@@ -60,6 +61,13 @@ void setup() {
   pinMode(RED_LIGHT_PIN, OUTPUT);
 
   servo.attach(DRIVE_WINDOWS_CONTROL);
+  
+  setLedState(false);
+  setPumpWateringState(false);
+  setPumpReturnState(false);
+  setFanState(false);
+  setWinDriveState("close");
+  setRedLedState(false);
 }
 
 /*
@@ -202,8 +210,31 @@ int setWinDriveState(String state){
       return 2;
     }
 
-    angle = 180;
+    angle = 110;
   }
+
+//  angle = state.toInt();
+//
+//  int a = 0;
+//
+//  bool b = false;
+//
+//  if (angle < servo.read()) {
+//    b = true;
+//    a = servo.read();
+//  }
+//  
+//  while (angle != a) {
+//
+//    if (b) {
+//      a--;
+//    } else {
+//      a++;
+//    }
+//    Serial.println(a);
+//    servo.write(a);
+//    delay(50);
+//  }
 
   servo.write(angle);
 
@@ -422,7 +453,7 @@ String processSetMode(String param) {
 }
 
 String processGetState(String param) {
-   if (param.equalsIgnoreCase("led")) {
+   if (param == "led") {
       
       return getResponseJson("led", getLedState());
       
@@ -466,15 +497,15 @@ String processGetState(String param) {
     
       return getResponseJson("win_drive", getWinDriveState());
       
-   } else if (param.equalsIgnoreCase("red_led")) {
+   } else if (param == "red_led") {
     
       return getResponseJson("red_led", getRedLedState());
       
-   } else if (param.indexOf("mode") != -1) {
+   } else if (param == "mode") {
 
       return getResponseJson("mode", manualMode ? "manual" : "auto");
      
-   } else if (param.indexOf("all") != -1) {
+   } else {
 
       String response = "{";
 
@@ -493,10 +524,11 @@ String processGetState(String param) {
       response += getValueJson("red_led", getRedLedState(), true);
 
       return response + "}";
-   } else {
-    
-      return getErrorResponse("Incorrect param for GetState");
    } 
+//   else {
+//    
+//      return getErrorResponse("Incorrect param for GetState");
+//   } 
 }
 
 String processSetState(String param) {
@@ -591,35 +623,39 @@ void loop() {
   Serial.println();
   #endif
 
-  updateTempCacheFromOneWire();
-
   #if (SERIAL_LOG)
   Serial.print("avalible on serial1: ");
   Serial.println(ESP_COM.available());
   #endif
 
+  String request = "";
+
   if (ESP_COM.available()) {
 
     ESP_COM.readBytes(buff, ESP_COM.available());
 
-    String request = String(buff);
+    request = String(buff);
 
     #if (SERIAL_LOG)
     Serial.println(request);
     #endif
+  }
 
+  //updateTempCacheFromOneWire();
+
+  if (request.length() > 0) {
     String response = routeRequest(request);
 
     ESP_COM.println(response);
   }
 
-  if (!manualMode) {
-    processAutoMode();
-  }
+//  if (!manualMode) {
+//    processAutoMode();
+//  }
 
   #if (SERIAL_LOG)
   Serial.println("-----------------------");
   #endif
   
-  delay(500);
+  //delay(100);
 }

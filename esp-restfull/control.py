@@ -179,19 +179,22 @@ def web_handler(conn, stripedRequest):
     sendResponse(conn, b'\n')
     sendResponse(conn, b'\n' + respBody, True)
         
+def accept_client(s):
+    conn, addr = s.accept()
+	
+    printD('Got a connection from %s' % str(addr))
+	
+    request = conn.recv(1024)
+    request = stripRequect(str(request))
+	
+    printD('URL = "%s"' % request)
+	
+    web_handler(conn, request)
+
 def web_loop(s):
     while True:
         try:
-            conn, addr = s.accept()
-            
-            printD('Got a connection from %s' % str(addr))
-            
-            request = conn.recv(1024)
-            request = stripRequect(str(request))
-            
-            printD('URL = "%s"' % request)
-            
-            web_handler(conn, request)
+	        accept_client(s)
 
         except Exception as ex:
             template = "An exception of type {0} occurred. Arguments:\n{1!r}"
