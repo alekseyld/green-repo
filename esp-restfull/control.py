@@ -72,13 +72,13 @@ def parseSettings(request):
 # --- start RESTfull API section ---
 
 def setMode(parsedRequest):
-    return serialcomm.write('setmode' + parsedRequest['params']['mode'])
+    return serialcomm.write('setmode ' + parsedRequest['params']['mode'])
 
 def getState(parsedRequest):
-    return serialcomm.write('getstate' + parsedRequest['params']['node'])
+    return serialcomm.write('getstate ' + parsedRequest['params']['node'])
 
 def setState(parsedRequest):
-    return serialcomm.write('setstate' + parsedRequest['params']['node'])
+    return serialcomm.write('setstate ' + parsedRequest['params']['node'] + ' ' + parsedRequest['params']['state'])
 
 def f(parsedRequest):
     return serialcomm.write('message from esp')#parsedRequest['params']['param1']

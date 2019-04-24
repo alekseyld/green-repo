@@ -9,7 +9,7 @@
 #define DEBUG true
 #define SERIAL_LOG true
 
-#define ESP_COM Serial1
+#define ESP_COM Serial
 
 #include <OneWire.h>
 #include <Servo.h>
@@ -239,6 +239,7 @@ void updateTempCacheFromOneWire() {
   while (!ds.search(addr)) {
     ds.reset_search();
     delay(250);
+    
   }
 
   ds.reset();
@@ -407,7 +408,8 @@ String parseParams(String request, String command) {
 }
 
 String processSetMode(String param) { 
-  if (param.equalsIgnoreCase("manual")) {
+  //Serial.println(param);
+  if (param.indexOf("manual") != -1) {
 
     setManualMode(true);
     return getResponseJson("manualMode", "manual");
@@ -468,11 +470,11 @@ String processGetState(String param) {
     
       return getResponseJson("red_led", getRedLedState());
       
-   } else if (param.equalsIgnoreCase("mode")) {
+   } else if (param.indexOf("mode") != -1) {
 
       return getResponseJson("mode", manualMode ? "manual" : "auto");
      
-   } else if (param.equalsIgnoreCase("all")) {
+   } else if (param.indexOf("all") != -1) {
 
       String response = "{";
 
@@ -600,7 +602,13 @@ void loop() {
 
     ESP_COM.readBytes(buff, ESP_COM.available());
 
-    String response = routeRequest(String(buff));
+    String request = String(buff);
+
+    #if (SERIAL_LOG)
+    Serial.println(request);
+    #endif
+
+    String response = routeRequest(request);
 
     ESP_COM.println(response);
   }
