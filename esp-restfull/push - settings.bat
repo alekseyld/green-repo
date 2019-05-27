@@ -1,1 +1,1 @@
-ampy --port COM7 put settings.json
+ampy --port COM17 put settings.json

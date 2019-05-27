@@ -1,5 +1,5 @@
-ampy --port COM7 put main.py
-ampy --port COM7 put control.py
-ampy --port COM7 put webpage.py
-ampy --port COM7 put serialcomm.py
-ampy --port COM7 put settings.json
+ampy --port COM17 put main.py
+ampy --port COM17 put control.py
+ampy --port COM17 put webpage.py
+ampy --port COM17 put serialcomm.py
+ampy --port COM17 put settings.json

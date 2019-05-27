@@ -1,1 +1,1 @@
-ampy --port COM7 put serialcomm.py
+ampy --port COM17 put serialcomm.py

@@ -51,5 +51,6 @@ def setupNetwork():
 
 if not PC_DEBUG:
     setupNetwork()
-
+    
 control.start_web()
+

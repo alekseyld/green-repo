@@ -7,11 +7,13 @@ import socket
 import gc
 import json
 
+import uasyncio as asyncio
+
 def importRe():
-    if PC_DEBUG:
-        import re
-    else:
+    try:
         import ure as re
+    except:
+        import re
 
 def printD(mes):
     if PC_DEBUG:
@@ -84,20 +86,21 @@ def f(parsedRequest):
     return serialcomm.write('message from esp')#parsedRequest['params']['param1']
     #return 'hello ' + parsedRequest['rest']
 
+def getAdminResponse(stripedRequest):
+    if (len(stripedRequest) > 7):
+        saveSettings(parseSettings(stripedRequest))
+        
+    return webpage.adminPage(getSettings())
+    
 REST_METHODS = {
     'setmode' : setMode,
     'getstate' : getState,
-    'setstate' : setState
+    'setstate' : setState,
+    'admin' : getAdminResponse
 }
 
 # --- end RESTfull API section ---
 
-def getAdminResponse(request):
-    if (len(request) > 7):
-        saveSettings(parseSettings(request))
-        
-    return webpage.adminPage(getSettings())
-   
 def sendResponse(conn, response, end = False):
     try:
         conn.sendall(response)
@@ -145,34 +148,56 @@ def parseRequest(stripedRequest):
         parsedRequest['restMethod'] = stripedRequest[1:len(stripedRequest)]
         
     return parsedRequest
+
+def generate_headers(response_code):
+    header = ''
+    if response_code == 200:
+        header += 'HTTP/1.1 200 OK\n'
+    elif response_code == 404:
+        header += 'HTTP/1.1 404 Not Found\n'
+    
+    time_now = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
+    header += 'Date: {now}\n'.format(now=time_now)
+    header += 'Server: Simple-Python-Server\n'
+    header += 'Connection: close\n\n' # Signal that connection will be closed after completing the request
+    return header
     
 def web_handler(conn, stripedRequest):
-    respBody = b''
+    respBody = b'_'
     code = b'';
 
+    headers = b'Connection: keep-alive' 
+    
     printD(stripedRequest)
 
-    if stripedRequest.find('admin', 0, 20) != -1:
+    #if stripedRequest.find('admin', 0, 20) != -1:
+        #header = generate_headers(200)
+        #respBody = getAdminResponse(stripedRequest)
+        
+        #sendResponse(conn, respBody, True)
+    #else:
+    try:
+        parsedRequest = parseRequest(stripedRequest)
+        
+        printD(parsedRequest)
+        
+        method = parsedRequest['restMethod']
+        
+        if method == "admin":
+            respBody = REST_METHODS[method](stripedRequest)
+            headers += b'\nContent-Type: text/html;charset=UTF-8'
+            
+        else:
+            respBody = REST_METHODS[method](parsedRequest).encode('utf-8')
+            headers += b'\nContent-Type: application/json;charset=UTF-8'
+        
         code = b'200 OK'
-        respBody = getAdminResponse(stripedRequest)
         
-        sendResponse(conn, respBody, True)
-        return;
-    else:
-        try:
-            parsedRequest = parseRequest(stripedRequest)
-
-            printD(parsedRequest)
-            
-            respBody = REST_METHODS[parsedRequest['restMethod']](parsedRequest).encode('utf-8')
-            
-            code = b'200 OK'
-            
-        except KeyError:
-            code = b'404 Not Found'
-            respBody = b'method not supported'
+    except KeyError:
+        code = b'404 Not Found'
+        respBody = b'method not supported'
         
-    headers = b'Connection: keep-alive\n' + b'Content-Type: application/json;charset=UTF-8\n' + b'Content-Length: ' + str(len(respBody)).encode('utf-8')
+    headers += b'\nContent-Length: ' + str(len(respBody)).encode('utf-8')
     
     sendResponse(conn, b'HTTP/1.1 ' + code + b'\n')
     sendResponse(conn, headers)
@@ -189,13 +214,14 @@ def accept_client(s):
 	
     printD('URL = "%s"' % request)
 	
-    web_handler(conn, request)
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(web_handler(conn, request))
 
-def web_loop(s):
+async def web_loop(s):
     while True:
         try:
-	        accept_client(s)
-
+            accept_client(s)
+	        
         except Exception as ex:
             template = "An exception of type {0} occurred. Arguments:\n{1!r}"
             message = template.format(type(ex).__name__, ex.args)
@@ -209,7 +235,9 @@ def start_web():
     addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
     s.bind(addr)
     s.listen(1)
-
-    web_loop(s)
+    
+    loop = asyncio.get_event_loop()
+    loop.create_task(web_loop(s)) # Schedule ASAP
+    loop.run_forever()
 
 gc.enable()
